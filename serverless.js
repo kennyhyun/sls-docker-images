@@ -11,6 +11,11 @@ const defaults = {
   push: false
 }
 
+const isDebug = () => {
+  const { SLS_DEBUG = '' } = process.env
+  return ['true', '*'].includes(SLS_DEBUG) || SLS_DEBUG.split(',').includes('docker-image')
+}
+
 class DockerImage extends Component {
   async default(inputs = {}) {
     const config = mergeDeepRight(defaults, inputs)
@@ -104,7 +109,17 @@ class DockerImage extends Component {
     return new Promise((resolve, reject) => {
       docker.modem.followProgress(stream, (err, res) => {
         if (err) {
+          console.error(err)
           return reject(err)
+        }
+        if (isDebug()) {
+          console.log((res || []).map((it) => it.stream).join(''))
+        }
+        const [{ error }] = (res || []).slice(-1)
+        if (error) {
+          if (!isDebug()) console.error((res || []).map((it) => it.stream).join(''))
+          reject(new Error(error))
+          return
         }
         return resolve(res)
       })
@@ -125,11 +140,22 @@ class DockerImage extends Component {
         { name: repository, tag },
         (err, stream) => {
           if (err) {
+            console.error(err)
             reject(err)
           }
-          docker.modem.followProgress(stream, (err, res) => {
+          docker.modem.followProgress(stream, (err, res = []) => {
             if (err) {
+              console.error(err)
               reject(err)
+              return
+            }
+            if (isDebug()) {
+              console.log((res || []).map((it) => it.stream).join(''))
+            }
+            const [{ error }] = res.slice(-1)
+            if (error) {
+              if (!isDebug()) console.error((res || []).map((it) => it.stream).join(''))
+              reject(new Error(error))
               return
             }
             resolve(res)
